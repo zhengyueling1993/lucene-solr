@@ -19,6 +19,7 @@ package org.apache.lucene.spatial.util;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashSet;
@@ -636,6 +637,68 @@ public abstract class BaseGeoPointTestCase extends LuceneTestCase {
     }
     return quantizeLon(result);
   }
+  
+  /** Returns {polyLats, polyLons} double[] array */
+  private double[][] surpriseMePolygon() {
+    // repeat until we get a poly that doesn't cross dateline:
+    newPoly:
+    while (true) {
+      //System.out.println("\nPOLY ITER");
+      double centerLat = randomLat(false);
+      double centerLon = randomLon(false);
+
+      double radius = 0.1 + 20 * random().nextDouble();
+      double radiusDelta = random().nextDouble();
+
+      ArrayList<Double> lats = new ArrayList<>();
+      ArrayList<Double> lons = new ArrayList<>();
+      double angle = 0.0;
+      while (true) {
+        angle += random().nextDouble()*40.0;
+        //System.out.println("  angle " + angle);
+        if (angle > 360) {
+          break;
+        }
+        double len = radius * (1.0 - radiusDelta + radiusDelta * random().nextDouble());
+        //System.out.println("    len=" + len);
+        double lat = centerLat + len * Math.cos(Math.toRadians(angle));
+        double lon = centerLon + len * Math.sin(Math.toRadians(angle));
+        if (lon <= GeoUtils.MIN_LON_INCL || lon >= GeoUtils.MAX_LON_INCL) {
+          // cannot cross dateline: try again!
+          continue newPoly;
+        }
+        if (lat > 90) {
+          // cross the north pole
+          lat = 180 - lat;
+          lon = 180 - lon;
+        } else if (lat < -90) {
+          // cross the south pole
+          lat = -180 - lat;
+          lon = 180 - lon;
+        }
+        if (lon <= GeoUtils.MIN_LON_INCL || lon >= GeoUtils.MAX_LON_INCL) {
+          // cannot cross dateline: try again!
+          continue newPoly;
+        }
+        lats.add(lat);
+        lons.add(lon);
+
+        //System.out.println("    lat=" + lats.get(lats.size()-1) + " lon=" + lons.get(lons.size()-1));
+      }
+
+      // close it
+      lats.add(lats.get(0));
+      lons.add(lons.get(0));
+
+      double[] latsArray = new double[lats.size()];
+      double[] lonsArray = new double[lons.size()];
+      for(int i=0;i<lats.size();i++) {
+        latsArray[i] = lats.get(i);
+        lonsArray[i] = lons.get(i);
+      }
+      return new double[][] {latsArray, lonsArray};
+    }
+  }
 
   /** Override this to quantize randomly generated lat, so the test won't fail due to quantization errors, which are 1) annoying to debug,
    *  and 2) should never affect "real" usage terribly. */
@@ -695,18 +758,7 @@ public abstract class BaseGeoPointTestCase extends LuceneTestCase {
     }
   }
   
-  static final boolean polyRectContainsPoint(GeoRect rect, double pointLat, double pointLon) {
-    // TODO write better random polygon tests
-    
-    // note: logic must be slightly different than rectContainsPoint, to satisfy
-    // insideness for cases exactly on boundaries.
-    
-    assert Double.isNaN(pointLat) == false;
-    assert rect.crossesDateline() == false;
-    double polyLats[] = new double[] { rect.minLat, rect.maxLat, rect.maxLat, rect.minLat, rect.minLat };
-    double polyLons[] = new double[] { rect.minLon, rect.minLon, rect.maxLon, rect.maxLon, rect.minLon };
-
-    // TODO: separately test this method is 100% correct, here treat it like a black box (like haversin)
+  static final boolean polygonContainsPoint(double polyLats[], double polyLons[], double pointLat, double pointLon) {
     return GeoRelationUtils.pointInPolygon(polyLats, polyLons, pointLat, pointLon);
   }
 
@@ -940,24 +992,51 @@ public abstract class BaseGeoPointTestCase extends LuceneTestCase {
         final GeoRect bbox = randomRect(small, false);
 
         // Polygon
-        double[] polyLats = new double[5];
-        double[] polyLons = new double[5];
-        polyLats[0] = bbox.minLat;
-        polyLons[0] = bbox.minLon;
-        polyLats[1] = bbox.maxLat;
-        polyLons[1] = bbox.minLon;
-        polyLats[2] = bbox.maxLat;
-        polyLons[2] = bbox.maxLon;
-        polyLats[3] = bbox.minLat;
-        polyLons[3] = bbox.maxLon;
-        polyLats[4] = bbox.minLat;
-        polyLons[4] = bbox.minLon;
+        final double[] polyLats;
+        final double[] polyLons;
+        // TODO: factor this out, maybe if we add Polygon class?
+        switch (random().nextInt(3)) {
+          case 0:
+            // box
+            polyLats = new double[5];
+            polyLons = new double[5];
+            polyLats[0] = bbox.minLat;
+            polyLons[0] = bbox.minLon;
+            polyLats[1] = bbox.maxLat;
+            polyLons[1] = bbox.minLon;
+            polyLats[2] = bbox.maxLat;
+            polyLons[2] = bbox.maxLon;
+            polyLats[3] = bbox.minLat;
+            polyLons[3] = bbox.maxLon;
+            polyLats[4] = bbox.minLat;
+            polyLons[4] = bbox.minLon;
+            break;
+          case 1:
+            // right triangle
+            polyLats = new double[4];
+            polyLons = new double[4];
+            polyLats[0] = bbox.minLat;
+            polyLons[0] = bbox.minLon;
+            polyLats[1] = bbox.maxLat;
+            polyLons[1] = bbox.minLon;
+            polyLats[2] = bbox.maxLat;
+            polyLons[2] = bbox.maxLon;
+            polyLats[3] = bbox.minLat;
+            polyLons[3] = bbox.minLon;
+            break;
+          default:
+            // surprise me!
+            double[][] res = surpriseMePolygon();
+            polyLats = res[0];
+            polyLons = res[1];
+            break;
+        }
         query = newPolygonQuery(FIELD_NAME, polyLats, polyLons);
 
         verifyHits = new VerifyHits() {
           @Override
           protected boolean shouldMatch(double pointLat, double pointLon) {
-            return polyRectContainsPoint(bbox, pointLat, pointLon);
+            return polygonContainsPoint(polyLats, polyLons, pointLat, pointLon);
           }
 
           @Override
