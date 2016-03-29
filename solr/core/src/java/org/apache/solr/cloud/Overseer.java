@@ -246,7 +246,7 @@ public class Overseer implements Closeable {
 
             ClusterState clusterState2 = zkStateWriter.writePendingUpdates();//note: may return null?
             if (clusterState2 == null) {
-              log.error("zkStateWriter.writePendingUpdates returned null clusterState");
+              assert false : "zkStateWriter.writePendingUpdates returned null clusterState";
             } else {
               clusterState = clusterState2;
             }
