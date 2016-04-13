@@ -24,6 +24,8 @@ import static org.apache.lucene.util.SloppyMath.haversinSortKey;
 
 import java.util.Random;
 
+import org.apache.lucene.geo.GeoTestUtil;
+
 
 public class TestSloppyMath extends LuceneTestCase {
   // accuracy for cos()
@@ -31,7 +33,9 @@ public class TestSloppyMath extends LuceneTestCase {
   // accuracy for asin()
   static double ASIN_DELTA = 1E-7;
   // accuracy for haversinMeters()
-  static double HAVERSIN_DELTA = 1E-5;
+  static double HAVERSIN_DELTA = 2E-1;
+  // accuracy for haversinMeters() for "reasonable" distances (< 1000km)
+  static double REASONABLE_HAVERSIN_DELTA = 1E-5;
   
   public void testCos() {
     assertTrue(Double.isNaN(cos(Double.NaN)));
@@ -99,8 +103,8 @@ public class TestSloppyMath extends LuceneTestCase {
     assertEquals(0, haversinMeters(90, -180, 90, 180), 0D);
     assertEquals(0, haversinMeters(90, 180, 90, 180), 0D);
     
-    // Test half a circle on the equator, using WGS84 equatorial earth radius
-    double earthRadiusMs = 6_378_137D;
+    // Test half a circle on the equator, using WGS84 mean earth radius in meters
+    double earthRadiusMs = 6_371_008.7714;
     double halfCircle = earthRadiusMs * Math.PI;
     assertEquals(halfCircle, haversinMeters(0, 0, 0, 180), 0D);
 
@@ -111,30 +115,30 @@ public class TestSloppyMath extends LuceneTestCase {
     double randomLat2 = 40.65 + (r.nextInt(10) - 5) * 360;
     double randomLon2 = -73.95 + (r.nextInt(10) - 5) * 360;
     
-    assertEquals(8_581.7047, haversinMeters(randomLat1, randomLon1, randomLat2, randomLon2), 0.01D);
+    assertEquals(8_572.1137, haversinMeters(randomLat1, randomLon1, randomLat2, randomLon2), 0.01D);
     
     
     // from solr and ES tests (with their respective epsilons)
     assertEquals(0, haversinMeters(40.7143528, -74.0059731, 40.7143528, -74.0059731), 0D);
-    assertEquals(5_291.80, haversinMeters(40.7143528, -74.0059731, 40.759011, -73.9844722), 0.01D);
-    assertEquals(462.62, haversinMeters(40.7143528, -74.0059731, 40.718266, -74.007819), 0.01D);
-    assertEquals(1_056.16, haversinMeters(40.7143528, -74.0059731, 40.7051157, -74.0088305), 0.01D);
-    assertEquals(1_259.53, haversinMeters(40.7143528, -74.0059731, 40.7247222, -74), 0.01D);
-    assertEquals(2_030.79, haversinMeters(40.7143528, -74.0059731, 40.731033, -73.9962255), 0.01D);
-    assertEquals(8_581.70, haversinMeters(40.7143528, -74.0059731, 40.65, -73.95), 0.01D);
+    assertEquals(5_285.89, haversinMeters(40.7143528, -74.0059731, 40.759011, -73.9844722), 0.01D);
+    assertEquals(462.10, haversinMeters(40.7143528, -74.0059731, 40.718266, -74.007819), 0.01D);
+    assertEquals(1_054.98, haversinMeters(40.7143528, -74.0059731, 40.7051157, -74.0088305), 0.01D);
+    assertEquals(1_258.12, haversinMeters(40.7143528, -74.0059731, 40.7247222, -74), 0.01D);
+    assertEquals(2_028.52, haversinMeters(40.7143528, -74.0059731, 40.731033, -73.9962255), 0.01D);
+    assertEquals(8_572.11, haversinMeters(40.7143528, -74.0059731, 40.65, -73.95), 0.01D);
   }
   
   /** Test this method sorts the same way as real haversin */
   public void testHaversinSortKey() {
     for (int i = 0; i < 100000; i++) {
-      double centerLat = -90 + 180.0 * random().nextDouble();
-      double centerLon = -180 + 360.0 * random().nextDouble();
+      double centerLat = GeoTestUtil.nextLatitude();
+      double centerLon = GeoTestUtil.nextLongitude();
 
-      double lat1 = -90 + 180.0 * random().nextDouble();
-      double lon1 = -180 + 360.0 * random().nextDouble();
+      double lat1 = GeoTestUtil.nextLatitude();
+      double lon1 = GeoTestUtil.nextLongitude();
 
-      double lat2 = -90 + 180.0 * random().nextDouble();
-      double lon2 = -180 + 360.0 * random().nextDouble();
+      double lat2 = GeoTestUtil.nextLatitude();
+      double lon2 = GeoTestUtil.nextLongitude();
 
       int expected = Integer.signum(Double.compare(haversinMeters(centerLat, centerLon, lat1, lon1),
                                                    haversinMeters(centerLat, centerLon, lat2, lon2)));
@@ -146,16 +150,35 @@ public class TestSloppyMath extends LuceneTestCase {
     }
   }
   
+  public void testHaversinFromSortKey() {
+    assertEquals(0.0, haversinMeters(0), 0.0D);
+  }
+  
   public void testAgainstSlowVersion() {
     for (int i = 0; i < 100_000; i++) {
-      double lat1 = -90 + 180.0 * random().nextDouble();
-      double lon1 = -180 + 360.0 * random().nextDouble();
-      double lat2 = -90 + 180.0 * random().nextDouble();
-      double lon2 = -180 + 360.0 * random().nextDouble();
+      double lat1 = GeoTestUtil.nextLatitude();
+      double lon1 = GeoTestUtil.nextLongitude();
+      double lat2 = GeoTestUtil.nextLatitude();
+      double lon2 = GeoTestUtil.nextLongitude();
 
       double expected = haversinMeters(lat1, lon1, lat2, lon2);
       double actual = slowHaversin(lat1, lon1, lat2, lon2);
       assertEquals(expected, actual, HAVERSIN_DELTA);
+    }
+  }
+  
+  public void testAgainstSlowVersionReasonable() {
+    for (int i = 0; i < 100_000; i++) {
+      double lat1 = GeoTestUtil.nextLatitude();
+      double lon1 = GeoTestUtil.nextLongitude();
+      double lat2 = GeoTestUtil.nextLatitude();
+      double lon2 = GeoTestUtil.nextLongitude();
+
+      double expected = haversinMeters(lat1, lon1, lat2, lon2);
+      if (expected < 1_000_000) {
+        double actual = slowHaversin(lat1, lon1, lat2, lon2);
+        assertEquals(expected, actual, REASONABLE_HAVERSIN_DELTA);
+      }
     }
   }
   
@@ -164,6 +187,6 @@ public class TestSloppyMath extends LuceneTestCase {
     double h1 = (1 - StrictMath.cos(StrictMath.toRadians(lat2) - StrictMath.toRadians(lat1))) / 2;
     double h2 = (1 - StrictMath.cos(StrictMath.toRadians(lon2) - StrictMath.toRadians(lon1))) / 2;
     double h = h1 + StrictMath.cos(StrictMath.toRadians(lat1)) * StrictMath.cos(StrictMath.toRadians(lat2)) * h2;
-    return 2 * 6378137 * StrictMath.asin(Math.min(1, Math.sqrt(h))); 
+    return 2 * 6371008.7714 * StrictMath.asin(Math.min(1, Math.sqrt(h))); 
   }
 }

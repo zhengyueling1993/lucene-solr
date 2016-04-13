@@ -1,3 +1,9 @@
+package org.apache.solr.client.solrj.impl;
+
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient.Builder;
+import org.junit.Test;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -14,17 +20,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.solr.security;
 
-import org.apache.solr.client.solrj.impl.HttpClientConfigurer;
+/**
+ * Unit tests for {@link Builder}.
+ */
+public class ConcurrentUpdateSolrClientBuilderTest extends LuceneTestCase {
 
-public interface HttpClientInterceptorPlugin {
-  /**
-   *
-   * @return Returns an instance of a HttpClientConfigurer to be used for configuring the
-   * httpclients for use with SolrJ clients.
-   *
-   * @lucene.experimental
-   */
-  public HttpClientConfigurer getClientConfigurer();
+  @Test(expected = IllegalArgumentException.class)
+  public void testRejectsMissingBaseSolrUrl() {
+    new Builder(null).build();
+  }
 }

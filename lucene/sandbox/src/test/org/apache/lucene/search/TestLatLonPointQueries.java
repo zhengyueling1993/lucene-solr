@@ -19,6 +19,8 @@ package org.apache.lucene.search;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LatLonPoint;
 import org.apache.lucene.spatial.util.BaseGeoPointTestCase;
+import org.apache.lucene.geo.Polygon;
+import org.apache.lucene.geo.GeoEncodingUtils;
 
 public class TestLatLonPointQueries extends BaseGeoPointTestCase {
 
@@ -38,22 +40,17 @@ public class TestLatLonPointQueries extends BaseGeoPointTestCase {
   }
 
   @Override
-  protected Query newDistanceRangeQuery(String field, double centerLat, double centerLon, double minRadiusMeters, double radiusMeters) {
-    return null;
-  }
-
-  @Override
-  protected Query newPolygonQuery(String field, double[] lats, double[] lons) {
-    return LatLonPoint.newPolygonQuery(field, lats, lons);
+  protected Query newPolygonQuery(String field, Polygon... polygons) {
+    return LatLonPoint.newPolygonQuery(field, polygons);
   }
 
   @Override
   protected double quantizeLat(double latRaw) {
-    return LatLonPoint.decodeLatitude(LatLonPoint.encodeLatitude(latRaw));
+    return GeoEncodingUtils.decodeLatitude(GeoEncodingUtils.encodeLatitude(latRaw));
   }
 
   @Override
   protected double quantizeLon(double lonRaw) {
-    return LatLonPoint.decodeLongitude(LatLonPoint.encodeLongitude(lonRaw));
+    return GeoEncodingUtils.decodeLongitude(GeoEncodingUtils.encodeLongitude(lonRaw));
   }
 }

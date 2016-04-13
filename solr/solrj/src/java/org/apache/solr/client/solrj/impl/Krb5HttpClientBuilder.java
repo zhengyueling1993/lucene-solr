@@ -32,32 +32,47 @@ import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpException;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpRequestInterceptor;
+import org.apache.http.auth.AuthSchemeProvider;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
-import org.apache.http.auth.AuthSchemeRegistry;
-import org.apache.http.impl.auth.SPNegoSchemeFactory;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.protocol.HttpContext;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.AuthSchemes;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.solr.common.params.SolrParams;
+import org.apache.http.config.Lookup;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.cookie.CookieSpecProvider;
+import org.apache.http.entity.BufferedHttpEntity;
+import org.apache.http.impl.auth.SPNegoSchemeFactory;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.protocol.HttpContext;
+import org.apache.solr.client.solrj.impl.SolrHttpClientBuilder.AuthSchemeRegistryProvider;
+import org.apache.solr.client.solrj.impl.SolrHttpClientBuilder.CookieSpecRegistryProvider;
+import org.apache.solr.client.solrj.impl.SolrHttpClientBuilder.CredentialsProviderProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.http.entity.BufferedHttpEntity;
 
 /**
- * Kerberos-enabled HttpClientConfigurer
+ * Kerberos-enabled SolrHttpClientBuilder
  */
-public class Krb5HttpClientConfigurer extends HttpClientConfigurer {
+public class Krb5HttpClientBuilder  {
   
   public static final String LOGIN_CONFIG_PROP = "java.security.auth.login.config";
   private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   private static final Configuration jaasConfig = new SolrJaasConfiguration();
 
-  public void configure(DefaultHttpClient httpClient, SolrParams config) {
-    super.configure(httpClient, config);
+  public Krb5HttpClientBuilder() {
 
+  }
+  
+  public SolrHttpClientBuilder getBuilder() {
+    return getBuilder(HttpClientUtil.getHttpClientBuilder());
+  }
+  
+  public void close() {
+    HttpClientUtil.removeRequestInterceptor(bufferedEntityInterceptor);
+  }
+  
+  public SolrHttpClientBuilder getBuilder(SolrHttpClientBuilder builder) {
     if (System.getProperty(LOGIN_CONFIG_PROP) != null) {
       String configValue = System.getProperty(LOGIN_CONFIG_PROP);
 
@@ -80,9 +95,13 @@ public class Krb5HttpClientConfigurer extends HttpClientConfigurer {
 
         javax.security.auth.login.Configuration.setConfiguration(jaasConfig);
         //Enable only SPNEGO authentication scheme.
-        AuthSchemeRegistry registry = new AuthSchemeRegistry();
-        registry.register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true, false));
-        httpClient.setAuthSchemes(registry);
+
+        builder.setAuthSchemeRegistryProvider(() -> {
+          Lookup<AuthSchemeProvider> authProviders = RegistryBuilder.<AuthSchemeProvider>create()
+              .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true, false))
+              .build();
+          return authProviders;
+        });
         // Get the credentials from the JAAS configuration rather than here
         Credentials useJaasCreds = new Credentials() {
           public String getPassword() {
@@ -92,30 +111,36 @@ public class Krb5HttpClientConfigurer extends HttpClientConfigurer {
             return null;
           }
         };
-
-        SolrPortAwareCookieSpecFactory cookieFactory = new SolrPortAwareCookieSpecFactory();
-        httpClient.getCookieSpecs().register(cookieFactory.POLICY_NAME, cookieFactory);
-        httpClient.getParams().setParameter(ClientPNames.COOKIE_POLICY, cookieFactory.POLICY_NAME);
         
-        httpClient.getCredentialsProvider().setCredentials(AuthScope.ANY, useJaasCreds);
+        HttpClientUtil.setCookiePolicy(SolrPortAwareCookieSpecFactory.POLICY_NAME);
+        
+        builder.setCookieSpecRegistryProvider(() -> {
+          SolrPortAwareCookieSpecFactory cookieFactory = new SolrPortAwareCookieSpecFactory();
 
-        httpClient.addRequestInterceptor(bufferedEntityInterceptor);
-      } else {
-        httpClient.getCredentialsProvider().clear();
+          Lookup<CookieSpecProvider> cookieRegistry = RegistryBuilder.<CookieSpecProvider> create()
+              .register(SolrPortAwareCookieSpecFactory.POLICY_NAME, cookieFactory).build();
+
+          return cookieRegistry;
+        });
+        
+        builder.setDefaultCredentialsProvider(() -> {
+          CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+          credentialsProvider.setCredentials(AuthScope.ANY, useJaasCreds);
+          return credentialsProvider;
+        });
+        HttpClientUtil.addRequestInterceptor(bufferedEntityInterceptor);
       }
     }
+    
+    return builder;
   }
 
   // Set a buffered entity based request interceptor
-  private HttpRequestInterceptor bufferedEntityInterceptor = new HttpRequestInterceptor() {
-    @Override
-    public void process(HttpRequest request, HttpContext context) throws HttpException,
-        IOException {
-      if(request instanceof HttpEntityEnclosingRequest) {
-        HttpEntityEnclosingRequest enclosingRequest = ((HttpEntityEnclosingRequest) request);  
-        HttpEntity requestEntity = enclosingRequest.getEntity();
-        enclosingRequest.setEntity(new BufferedHttpEntity(requestEntity));
-      }
+  private HttpRequestInterceptor bufferedEntityInterceptor = (request, context) -> {
+    if(request instanceof HttpEntityEnclosingRequest) {
+      HttpEntityEnclosingRequest enclosingRequest = ((HttpEntityEnclosingRequest) request);
+      HttpEntity requestEntity = enclosingRequest.getEntity();
+      enclosingRequest.setEntity(new BufferedHttpEntity(requestEntity));
     }
   };
 

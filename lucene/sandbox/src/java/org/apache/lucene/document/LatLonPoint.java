@@ -25,10 +25,18 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.FieldDoc;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.PointRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
-import org.apache.lucene.spatial.util.GeoUtils;
+import org.apache.lucene.geo.Polygon;
+
+import static org.apache.lucene.geo.GeoEncodingUtils.decodeLatitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.decodeLongitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitudeCeil;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitudeCeil;
 
 /** 
  * An indexed location field.
@@ -45,8 +53,9 @@ import org.apache.lucene.spatial.util.GeoUtils;
  *   <li>{@link #newPolygonQuery newPolygonQuery()} for matching points within an arbitrary polygon.
  * </ul>
  * <p>
- * <b>WARNING</b>: Values are indexed with some loss of precision, incurring up to 1E-7 error from the
- * original {@code double} values. 
+ * <b>WARNING</b>: Values are indexed with some loss of precision from the
+ * original {@code double} values (4.190951585769653E-8 for the latitude component
+ * and 8.381903171539307E-8 for longitude).
  * @see PointValues
  */
 // TODO ^^^ that is very sandy and hurts the API, usage, and tests tremendously, because what the user passes
@@ -96,10 +105,10 @@ public class LatLonPoint extends Field {
   }
 
   private static final int BITS = 32;
-  private static final double LONGITUDE_ENCODE = (0x1L<<BITS)/360.0D;
-  private static final double LONGITUDE_DECODE = 1/LONGITUDE_ENCODE;
-  private static final double LATITUDE_ENCODE  = (0x1L<<BITS)/180.0D;
-  private static final double LATITUDE_DECODE  =  1/LATITUDE_ENCODE;
+  private static final double LONGITUDE_MUL = (0x1L<<BITS)/360.0D;
+  static final double LONGITUDE_DECODE = 1/LONGITUDE_MUL;
+  private static final double LATITUDE_MUL  = (0x1L<<BITS)/180.0D;
+  static final double LATITUDE_DECODE  = 1/LATITUDE_MUL;
   
   @Override
   public String toString() {
@@ -120,86 +129,12 @@ public class LatLonPoint extends Field {
   /**
    * Returns a 64-bit long, where the upper 32 bits are the encoded latitude,
    * and the lower 32 bits are the encoded longitude.
-   * @see #decodeLatitude(int)
-   * @see #decodeLongitude(int)
+   * @see org.apache.lucene.geo.GeoEncodingUtils#decodeLatitude(int)
+   * @see org.apache.lucene.geo.GeoEncodingUtils#decodeLongitude(int)
    */
   @Override
   public Number numericValue() {
     return currentValue;
-  }
-
-  // public helper methods (e.g. for queries)
-
-  /** 
-   * Quantizes double (64 bit) latitude into 32 bits 
-   * @param latitude latitude value: must be within standard +/-90 coordinate bounds.
-   * @return encoded value as a 32-bit {@code int}
-   * @throws IllegalArgumentException if latitude is out of bounds
-   */
-  public static int encodeLatitude(double latitude) {
-    GeoUtils.checkLatitude(latitude);
-    // the maximum possible value cannot be encoded without overflow
-    if (latitude == 90.0D) {
-      latitude = Math.nextDown(latitude);
-    }
-    return Math.toIntExact((long) (latitude * LATITUDE_ENCODE));
-  }
-
-  /** 
-   * Quantizes double (64 bit) longitude into 32 bits 
-   * @param longitude longitude value: must be within standard +/-180 coordinate bounds.
-   * @return encoded value as a 32-bit {@code int}
-   * @throws IllegalArgumentException if longitude is out of bounds
-   */
-  public static int encodeLongitude(double longitude) {
-    GeoUtils.checkLongitude(longitude);
-    // the maximum possible value cannot be encoded without overflow
-    if (longitude == 180.0D) {
-      longitude = Math.nextDown(longitude);
-    }
-    return Math.toIntExact((long) (longitude * LONGITUDE_ENCODE));
-  }
-
-  /** 
-   * Turns quantized value from {@link #encodeLatitude} back into a double. 
-   * @param encoded encoded value: 32-bit quantized value.
-   * @return decoded latitude value.
-   */
-  public static double decodeLatitude(int encoded) {
-    double result = encoded * LATITUDE_DECODE;
-    assert result >= GeoUtils.MIN_LAT_INCL && result <= GeoUtils.MAX_LAT_INCL;
-    return result;
-  }
-  
-  /** 
-   * Turns quantized value from byte array back into a double. 
-   * @param src byte array containing 4 bytes to decode at {@code offset}
-   * @param offset offset into {@code src} to decode from.
-   * @return decoded latitude value.
-   */
-  public static double decodeLatitude(byte[] src, int offset) {
-    return decodeLatitude(NumericUtils.sortableBytesToInt(src, offset));
-  }
-
-  /** 
-   * Turns quantized value from {@link #encodeLongitude} back into a double. 
-   * @param encoded encoded value: 32-bit quantized value.
-   * @return decoded longitude value.
-   */  
-  public static double decodeLongitude(int encoded) {
-    double result = encoded * LONGITUDE_DECODE;
-    assert result >= GeoUtils.MIN_LON_INCL && result <= GeoUtils.MAX_LON_INCL;
-    return result;
-  }
-
-  /** 
-   * Turns quantized value from byte array back into a double. 
-   * @param src byte array containing 4 bytes to decode at {@code offset}
-   * @param offset offset into {@code src} to decode from.
-   * @return decoded longitude value.
-   */
-  public static double decodeLongitude(byte[] src, int offset) {
-    return decodeLongitude(NumericUtils.sortableBytesToInt(src, offset));
   }
   
   /** sugar encodes a single point as a byte array */
@@ -207,6 +142,14 @@ public class LatLonPoint extends Field {
     byte[] bytes = new byte[2 * Integer.BYTES];
     NumericUtils.intToSortableBytes(encodeLatitude(latitude), bytes, 0);
     NumericUtils.intToSortableBytes(encodeLongitude(longitude), bytes, Integer.BYTES);
+    return bytes;
+  }
+  
+  /** sugar encodes a single point as a byte array, rounding values up */
+  private static byte[] encodeCeil(double latitude, double longitude) {
+    byte[] bytes = new byte[2 * Integer.BYTES];
+    NumericUtils.intToSortableBytes(encodeLatitudeCeil(latitude), bytes, 0);
+    NumericUtils.intToSortableBytes(encodeLongitudeCeil(longitude), bytes, Integer.BYTES);
     return bytes;
   }
 
@@ -236,7 +179,7 @@ public class LatLonPoint extends Field {
    * Create a query for matching a bounding box.
    * <p>
    * The box may cross over the dateline.
-   * @param field field name. cannot be null.
+   * @param field field name. must not be null.
    * @param minLatitude latitude lower bound: must be within standard +/-90 coordinate bounds.
    * @param maxLatitude latitude upper bound: must be within standard +/-90 coordinate bounds.
    * @param minLongitude longitude lower bound: must be within standard +/-180 coordinate bounds.
@@ -245,7 +188,22 @@ public class LatLonPoint extends Field {
    * @throws IllegalArgumentException if {@code field} is null, or the box has invalid coordinates.
    */
   public static Query newBoxQuery(String field, double minLatitude, double maxLatitude, double minLongitude, double maxLongitude) {
-    byte[] lower = encode(minLatitude, minLongitude);
+    // exact double values of lat=90.0D and lon=180.0D must be treated special as they are not represented in the encoding
+    // and should not drag in extra bogus junk! TODO: should encodeCeil just throw ArithmeticException to be less trappy here?
+    if (minLatitude == 90.0) {
+      // range cannot match as 90.0 can never exist
+      return new MatchNoDocsQuery();
+    }
+    if (minLongitude == 180.0) {
+      if (maxLongitude == 180.0) {
+        // range cannot match as 180.0 can never exist
+        return new MatchNoDocsQuery();
+      } else if (maxLongitude < minLongitude) {
+        // encodeCeil() with dateline wrapping!
+        minLongitude = -180.0;
+      }
+    }
+    byte[] lower = encodeCeil(minLatitude, minLongitude);
     byte[] upper = encode(maxLatitude, maxLongitude);
     // Crosses date line: we just rewrite into OR of two bboxes, with longitude as an open range:
     if (maxLongitude < minLongitude) {
@@ -288,7 +246,7 @@ public class LatLonPoint extends Field {
   
   /**
    * Create a query for matching points within the specified distance of the supplied location.
-   * @param field field name. cannot be null.
+   * @param field field name. must not be null.
    * @param latitude latitude at the center: must be within standard +/-90 coordinate bounds.
    * @param longitude longitude at the center: must be within standard +/-180 coordinate bounds.
    * @param radiusMeters maximum distance from the center in meters: must be non-negative and finite.
@@ -300,20 +258,15 @@ public class LatLonPoint extends Field {
   }
   
   /** 
-   * Create a query for matching a polygon.
-   * <p>
-   * The supplied {@code polyLats}/{@code polyLons} must be clockwise or counter-clockwise.
-   * @param field field name. cannot be null.
-   * @param polyLats latitude values for points of the polygon: must be within standard +/-90 coordinate bounds.
-   * @param polyLons longitude values for points of the polygon: must be within standard +/-180 coordinate bounds.
+   * Create a query for matching one or more polygons.
+   * @param field field name. must not be null.
+   * @param polygons array of polygons. must not be null or empty
    * @return query matching points within this polygon
-   * @throws IllegalArgumentException if {@code field} is null, {@code polyLats} is null or has invalid coordinates, 
-   *                                  {@code polyLons} is null or has invalid coordinates, if {@code polyLats} has a different
-   *                                  length than {@code polyLons}, if the polygon has less than 4 points, or if polygon is 
-   *                                  not closed (first and last points should be the same)
+   * @throws IllegalArgumentException if {@code field} is null, {@code polygons} is null or empty
+   * @see Polygon
    */
-  public static Query newPolygonQuery(String field, double[] polyLats, double[] polyLons) {
-    return new LatLonPointInPolygonQuery(field, polyLats, polyLons);
+  public static Query newPolygonQuery(String field, Polygon... polygons) {
+    return new LatLonPointInPolygonQuery(field, polygons);
   }
 
   /**
@@ -327,7 +280,7 @@ public class LatLonPoint extends Field {
    * <p>
    * If a document contains multiple values for the field, the <i>closest</i> distance to the location is used.
    * 
-   * @param field field name. cannot be null.
+   * @param field field name. must not be null.
    * @param latitude latitude at the center: must be within standard +/-90 coordinate bounds.
    * @param longitude longitude at the center: must be within standard +/-180 coordinate bounds.
    * @return SortField ordering documents by distance

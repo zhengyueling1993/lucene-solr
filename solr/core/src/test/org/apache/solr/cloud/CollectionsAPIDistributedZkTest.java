@@ -97,6 +97,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   @BeforeClass
   public static void beforeCollectionsAPIDistributedZkTest() {
     TestInjection.randomDelayInCoreCreation = "true:20";
+    System.setProperty("validateAfterInactivity", "200");
   }
   
   @Override
@@ -722,7 +723,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       
       String url = getUrlFromZk(collection);
 
-      try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
+      try (HttpSolrClient collectionClient = getHttpSolrClient(url)) {
         // poll for a second - it can take a moment before we are ready to serve
         waitForNon403or404or503(collectionClient);
       }
@@ -742,7 +743,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         
         String url = getUrlFromZk(collection);
         
-        try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
+        try (HttpSolrClient collectionClient = getHttpSolrClient(url)) {
           // poll for a second - it can take a moment before we are ready to serve
           waitForNon403or404or503(collectionClient);
         }
@@ -789,7 +790,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     String url = getUrlFromZk(collectionName);
 
-    try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
+    try (HttpSolrClient collectionClient = getHttpSolrClient(url)) {
 
       // lets try and use the solrj client to index a couple documents
       SolrInputDocument doc1 = getDoc(id, 6, i1, -600, tlong, 600, t1,
@@ -886,7 +887,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     
     url = getUrlFromZk(collectionName);
     
-    try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
+    try (HttpSolrClient collectionClient = getHttpSolrClient(url)) {
       // poll for a second - it can take a moment before we are ready to serve
       waitForNon403or404or503(collectionClient);
     }
@@ -1061,7 +1062,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
           Entry<String,Replica> shardEntry = shardIt.next();
           ZkCoreNodeProps coreProps = new ZkCoreNodeProps(shardEntry.getValue());
           CoreAdminResponse mcr;
-          try (HttpSolrClient server = new HttpSolrClient(coreProps.getBaseUrl())) {
+          try (HttpSolrClient server = getHttpSolrClient(coreProps.getBaseUrl())) {
             mcr = CoreAdminRequest.getStatus(coreProps.getCoreName(), server);
           }
           long before = mcr.getStartTime(coreProps.getCoreName()).getTime();
@@ -1196,11 +1197,12 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
           null, client, props);
       assertNotNull(newReplica);
 
-      HttpSolrClient coreclient = new HttpSolrClient(newReplica.getStr(ZkStateReader.BASE_URL_PROP));
-      CoreAdminResponse status = CoreAdminRequest.getStatus(newReplica.getStr("core"), coreclient);
-      NamedList<Object> coreStatus = status.getCoreStatus(newReplica.getStr("core"));
-      String instanceDirStr = (String) coreStatus.get("instanceDir");
-      assertEquals(Paths.get(instanceDirStr).toString(), instancePathStr);
+      try (HttpSolrClient coreclient = getHttpSolrClient(newReplica.getStr(ZkStateReader.BASE_URL_PROP))) {
+        CoreAdminResponse status = CoreAdminRequest.getStatus(newReplica.getStr("core"), coreclient);
+        NamedList<Object> coreStatus = status.getCoreStatus(newReplica.getStr("core"));
+        String instanceDirStr = (String) coreStatus.get("instanceDir");
+        assertEquals(Paths.get(instanceDirStr).toString(), instancePathStr);
+      }
 
       //Test to make sure we can't create another replica with an existing core_name of that collection
       String coreName = newReplica.getStr(CORE_NAME_PROP);

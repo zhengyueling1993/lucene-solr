@@ -23,7 +23,7 @@ import org.apache.lucene.search.FieldValueQuery;
 import org.apache.lucene.search.LegacyNumericRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.spatial.geopoint.document.GeoPointField.TermEncoding;
-import org.apache.lucene.spatial.util.GeoUtils;
+import org.apache.lucene.geo.GeoUtils;
 
 /** Implements a simple bounding box query on a GeoPoint field. This is inspired by
  * {@link LegacyNumericRangeQuery} and is implemented using a
@@ -31,8 +31,6 @@ import org.apache.lucene.spatial.util.GeoUtils;
  * range based on the morton codes of the min and max lat/lon pairs. Terms
  * passing this initial filter are passed to a final check that verifies whether
  * the decoded lat/lon falls within (or on the boundary) of the query bounding box.
- * The value comparisons are subject to a precision tolerance defined in
- * {@value org.apache.lucene.spatial.util.GeoEncodingUtils#TOLERANCE}
  *
  * NOTES:
  *    1.  All latitude/longitude values must be in decimal degrees.
@@ -72,10 +70,10 @@ public class GeoPointInBBoxQuery extends Query {
    */
   public GeoPointInBBoxQuery(final String field, final TermEncoding termEncoding, final double minLat, final double maxLat, final double minLon, final double maxLon) {
     if (field == null) {
-      throw new IllegalArgumentException("field cannot be null");
+      throw new IllegalArgumentException("field must not be null");
     }
     if (termEncoding == null) {
-      throw new IllegalArgumentException("termEncoding cannot be null");
+      throw new IllegalArgumentException("termEncoding must not be null");
     }
     GeoUtils.checkLatitude(minLat);
     GeoUtils.checkLatitude(maxLat);

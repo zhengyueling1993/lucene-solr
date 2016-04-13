@@ -19,8 +19,11 @@ package org.apache.lucene.document;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.apache.lucene.geo.GeoTestUtil;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SerialMergeScheduler;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -31,6 +34,11 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.SloppyMath;
 import org.apache.lucene.util.TestUtil;
+
+import static org.apache.lucene.geo.GeoEncodingUtils.decodeLatitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.decodeLongitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitude;
 
 /** Simple tests for {@link LatLonPoint#newDistanceSort} */
 public class TestLatLonPointDistanceSort extends LuceneTestCase {
@@ -61,13 +69,13 @@ public class TestLatLonPointDistanceSort extends LuceneTestCase {
     TopDocs td = searcher.search(new MatchAllDocsQuery(), 3, sort);
     
     FieldDoc d = (FieldDoc) td.scoreDocs[0];
-    assertEquals(462.6174876948475D, (Double)d.fields[0], 0.0D);
+    assertEquals(462.1028401330431, (Double)d.fields[0], 0.0D);
     
     d = (FieldDoc) td.scoreDocs[1];
-    assertEquals(1056.163041670945D, (Double)d.fields[0], 0.0D);
+    assertEquals(1054.9842850974826, (Double)d.fields[0], 0.0D);
     
     d = (FieldDoc) td.scoreDocs[2];
-    assertEquals(5291.798081190281D, (Double)d.fields[0], 0.0D);
+    assertEquals(5285.881528419706, (Double)d.fields[0], 0.0D);
     
     reader.close();
     dir.close();
@@ -98,10 +106,10 @@ public class TestLatLonPointDistanceSort extends LuceneTestCase {
     TopDocs td = searcher.search(new MatchAllDocsQuery(), 3, sort);
     
     FieldDoc d = (FieldDoc) td.scoreDocs[0];
-    assertEquals(462.6174876948475D, (Double)d.fields[0], 0.0D);
+    assertEquals(462.1028401330431D, (Double)d.fields[0], 0.0D);
     
     d = (FieldDoc) td.scoreDocs[1];
-    assertEquals(1056.163041670945D, (Double)d.fields[0], 0.0D);
+    assertEquals(1054.9842850974826, (Double)d.fields[0], 0.0D);
     
     d = (FieldDoc) td.scoreDocs[2];
     assertEquals(Double.POSITIVE_INFINITY, (Double)d.fields[0], 0.0D);
@@ -175,18 +183,21 @@ public class TestLatLonPointDistanceSort extends LuceneTestCase {
   
   private void doRandomTest(int numDocs, int numQueries) throws IOException {
     Directory dir = newDirectory();    
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
+    IndexWriterConfig iwc = newIndexWriterConfig();
+    // else seeds may not to reproduce:
+    iwc.setMergeScheduler(new SerialMergeScheduler());
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, iwc);
 
     for (int i = 0; i < numDocs; i++) {
       Document doc = new Document();
       doc.add(new StoredField("id", i));
       doc.add(new NumericDocValuesField("id", i));
       if (random().nextInt(10) > 7) {
-        double latRaw = -90 + 180.0 * random().nextDouble();
-        double lonRaw = -180 + 360.0 * random().nextDouble();
+        double latRaw = GeoTestUtil.nextLatitude();
+        double lonRaw = GeoTestUtil.nextLongitude();
         // pre-normalize up front, so we can just use quantized value for testing and do simple exact comparisons
-        double lat = LatLonPoint.decodeLatitude(LatLonPoint.encodeLatitude(latRaw));
-        double lon = LatLonPoint.decodeLongitude(LatLonPoint.encodeLongitude(lonRaw));
+        double lat = decodeLatitude(encodeLatitude(latRaw));
+        double lon = decodeLongitude(encodeLongitude(lonRaw));
 
         doc.add(new LatLonPoint("field", lat, lon));
         doc.add(new StoredField("lat", lat));
@@ -198,8 +209,8 @@ public class TestLatLonPointDistanceSort extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
 
     for (int i = 0; i < numQueries; i++) {
-      double lat = -90 + 180.0 * random().nextDouble();
-      double lon = -180 + 360.0 * random().nextDouble();
+      double lat = GeoTestUtil.nextLatitude();
+      double lon = GeoTestUtil.nextLongitude();
       double missingValue = Double.POSITIVE_INFINITY;
 
       Result expected[] = new Result[reader.maxDoc()];

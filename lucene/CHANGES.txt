@@ -18,18 +18,29 @@ New Features
 
 API Changes
 
+* LUCENE-7184: Refactor LatLonPoint encoding methods to new GeoEncodingUtils
+  helper class in core geo package. Also refactors LatLonPointTests to
+  TestGeoEncodingUtils (Nick Knize)
+
+* LUCENE-7163: refactor GeoRect, Polygon, and GeoUtils tests to geo
+  package in core (Nick Knize)
+
+* LUCENE-7152: Refactor GeoUtils from lucene-spatial package to
+  core (Nick Knize)
+
 * LUCENE-7141: Switch OfflineSorter's ByteSequencesReader to
   BytesRefIterator (Mike McCandless)
+
+* LUCENE-7150: Spatial3d gets useful APIs to create common shape
+  queries, matching LatLonPoint.  (Karl Wright via Mike McCandless)
 
 Optimizations
 
 * LUCENE-7071: Reduce bytes copying in OfflineSorter, giving ~10%
   speedup on merging 2D LatLonPoint values (Mike McCandless)
 
-* LUCENE-7099: LatLonPoint's newDistanceQuery supports two-phase
-  iteration. (Robert Muir)
-
-* LUCENE-7105: Optimize LatLonPoint's newDistanceQuery. (Robert Muir)
+* LUCENE-7105, LUCENE-7215: Optimize LatLonPoint's newDistanceQuery. 
+  (Robert Muir)
 
 * LUCENE-7109: LatLonPoint's newPolygonQuery supports two-phase 
   iteration. (Robert Muir)
@@ -40,9 +51,42 @@ Optimizations
 * LUCENE-7115: Speed up FieldCache.CacheEntry toString by setting initial
   StringBuilder capacity (Gregory Chanan)
 
+* LUCENE-7147: Improve disjoint check for geo distance query traversal
+  (Ryan Ernst, Robert Muir, Mike McCandless)
+
+* LUCENE-7153: GeoPointField and LatLonPoint polygon queries now support
+  multiple polygons and holes, with memory usage independent of
+  polygon complexity. (Karl Wright, Mike McCandless, Robert Muir)
+
+* LUCENE-7159: Speed up LatLonPoint polygon performance for complex
+  polygons. (Robert Muir)
+
+* LUCENE-7211: Reduce memory & GC for spatial RPT Intersects when the number of
+  matching docs is small. (Jeff Wartes, David Smiley)
+
 Bug Fixes
 
 * LUCENE-7127: Fix corner case bugs in GeoPointDistanceQuery. (Robert Muir)
+
+* LUCENE-7166: Fix corner case bugs in LatLonPoint/GeoPointField bounding box
+  queries. (Robert Muir)
+
+* LUCENE-7168: Switch to stable encode for geo3d, remove quantization
+  test leniency, remove dead code (Mike McCandless)
+
+* LUCENE-7187: Block join queries' Weight#extractTerms(...) implementations
+  should delegate to the wrapped weight. (Martijn van Groningen)
+
+* LUCENE-7188: remove incorrect sanity check in NRTCachingDirectory.listAll()
+  that led to IllegalStateException being thrown when nothing was wrong.
+  (David Smiley, yonik)  
+
+Other
+
+* LUCENE-7174: Upgrade randomizedtesting to 2.3.4. (Uwe Schindler, Dawid Weiss)
+
+* LUCENE-7205: Remove repeated nl.getLength() calls in
+  (Boolean|DisjunctionMax|FuzzyLikeThis)QueryBuilder. (Christine Poerschke)
 
 ======================= Lucene 6.0.0 =======================
 
@@ -114,6 +158,12 @@ New Features
   instead.   (Adrien Grand, Robert Muir, Mike McCandless)
 
 API Changes
+
+* LUCENE-7094: BBoxStrategy and PointVectorStrategy now support
+  PointValues (in addition to legacy numeric trie).  Their APIs
+  were changed a little and also made more consistent.  PointValues/Trie
+  is optional, DocValues is optional, stored value is optional.
+  (Nick Knize, David Smiley)
 
 * LUCENE-6067: Accountable.getChildResources has a default
   implementation returning the empty list.  (Robert Muir)
@@ -231,6 +281,13 @@ Bug Fixes
 
 * LUCENE-7112: WeightedSpanTermExtractor.extractUnknownQuery is only called
   on queries that could not be extracted. (Adrien Grand)
+
+* LUCENE-7126: Remove GeoPointDistanceRangeQuery. This query was implemented
+  with boolean NOT, and incorrect for multi-valued documents. (Robert Muir)
+
+* LUCENE-7158: Consistently use earth's WGS84 mean radius wherever our
+  geo search implementations approximate the earth as a sphere (Karl
+  Wright via Mike McCandless)
 
 Other
 

@@ -48,7 +48,7 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.SimpleOrderedMap;
-
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 
@@ -88,6 +88,16 @@ public class TestCloudDeleteByQuery extends SolrCloudTestCase {
   
   /** id field doc routing prefix for shard2 */
   private static final String S_TWO_PRE = "XYZ!";
+  
+  @AfterClass
+  private static void afterClass() throws Exception {
+    CLOUD_CLIENT.close(); CLOUD_CLIENT = null;
+    S_ONE_LEADER_CLIENT.close(); S_ONE_LEADER_CLIENT = null;
+    S_TWO_LEADER_CLIENT.close(); S_TWO_LEADER_CLIENT = null;
+    S_ONE_NON_LEADER_CLIENT.close(); S_ONE_NON_LEADER_CLIENT = null;
+    S_TWO_NON_LEADER_CLIENT.close(); S_TWO_NON_LEADER_CLIENT = null;
+    NO_COLLECTION_CLIENT.close(); NO_COLLECTION_CLIENT = null;
+  }
   
   @BeforeClass
   private static void createMiniSolrCloudCluster() throws Exception {
@@ -145,17 +155,17 @@ public class TestCloudDeleteByQuery extends SolrCloudTestCase {
       assertNotNull("could not find URL for " + shardName + " replica", passiveUrl);
 
       if (shardName.equals("shard1")) {
-        S_ONE_LEADER_CLIENT = new HttpSolrClient(leaderUrl + "/" + COLLECTION_NAME + "/");
-        S_ONE_NON_LEADER_CLIENT = new HttpSolrClient(passiveUrl + "/" + COLLECTION_NAME + "/");
+        S_ONE_LEADER_CLIENT = getHttpSolrClient(leaderUrl + "/" + COLLECTION_NAME + "/");
+        S_ONE_NON_LEADER_CLIENT = getHttpSolrClient(passiveUrl + "/" + COLLECTION_NAME + "/");
       } else if (shardName.equals("shard2")) {
-        S_TWO_LEADER_CLIENT = new HttpSolrClient(leaderUrl + "/" + COLLECTION_NAME + "/");
-        S_TWO_NON_LEADER_CLIENT = new HttpSolrClient(passiveUrl + "/" + COLLECTION_NAME + "/");
+        S_TWO_LEADER_CLIENT = getHttpSolrClient(leaderUrl + "/" + COLLECTION_NAME + "/");
+        S_TWO_NON_LEADER_CLIENT = getHttpSolrClient(passiveUrl + "/" + COLLECTION_NAME + "/");
       } else {
         fail("unexpected shard: " + shardName);
       }
     }
     assertEquals("Should be exactly one server left (nost hosting either shard)", 1, urlMap.size());
-    NO_COLLECTION_CLIENT = new HttpSolrClient(urlMap.values().iterator().next() +
+    NO_COLLECTION_CLIENT = getHttpSolrClient(urlMap.values().iterator().next() +
                                               "/" + COLLECTION_NAME + "/");
     
     assertNotNull(S_ONE_LEADER_CLIENT);

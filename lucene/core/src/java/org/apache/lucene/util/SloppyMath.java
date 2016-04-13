@@ -37,7 +37,9 @@ public class SloppyMath {
    * specified in decimal degrees (latitude/longitude).  This works correctly
    * even if the dateline is between the two points.
    * <p>
-   * Error is around 1E-5 (0.01mm) from the actual haversine distance.
+   * Error is at most 2E-1 (20cm) from the actual haversine distance, but is typically
+   * much smaller for reasonable distances: around 1E-5 (0.01mm) for distances less than
+   * 1000km.
    *
    * @param lat1 Latitude of the first point.
    * @param lon1 Longitude of the first point.
@@ -87,7 +89,9 @@ public class SloppyMath {
     double x2 = lat2 * TO_RADIANS;
     double h1 = 1 - cos(x1 - x2);
     double h2 = 1 - cos((lon1 - lon2) * TO_RADIANS);
-    return h1 + cos(x1) * cos(x2) * h2;
+    double h = h1 + cos(x1) * cos(x2) * h2;
+    // clobber crazy precision so subsequent rounding does not create ties.
+    return Double.longBitsToDouble(Double.doubleToRawLongBits(h) & 0xFFFFFFFFFFFFFFF8L);
   }
 
   /**
@@ -176,8 +180,10 @@ public class SloppyMath {
   // TODO: remove these for java 9, they fixed Math.toDegrees()/toRadians() to work just like this.
   public static final double TO_RADIANS = Math.PI / 180D;
   public static final double TO_DEGREES = 180D / Math.PI;
-  private static final double TO_METERS = 6_378_137D; // equatorial radius
-  private static final double TO_KILOMETERS = 6_378.137D; // equatorial radius
+
+  // Earth's mean radius, in meters and kilometers; see http://earth-info.nga.mil/GandG/publications/tr8350.2/wgs84fin.pdf
+  private static final double TO_METERS = 6_371_008.7714D; // equatorial radius
+  private static final double TO_KILOMETERS = 6_371.0087714D; // equatorial radius
   
   // cos/asin
   private static final double ONE_DIV_F2 = 1/2.0;

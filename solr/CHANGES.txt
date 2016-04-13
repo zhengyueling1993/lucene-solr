@@ -17,7 +17,33 @@ servlet container in the directory named "example".
 See the Quick Start guide at http://lucene.apache.org/solr/quickstart.html
 
 ==================  7.0.0 ==================
-(No Changes)
+
+Upgrading from Solr 6.x
+----------------------
+
+* HttpClientInterceptorPlugin is now HttpClientBuilderPlugin and must work with a 
+  SolrHttpClientBuilder rather than an HttpClientConfigurer.
+  
+* HttpClientUtil now allows configuring HttpClient instances via SolrHttpClientBuilder
+  rather than an HttpClientConfigurer.
+
+* SolrClient implementations now use their own internal configuration for socket timeouts,
+  connect timeouts, and allowing redirects rather than what is set as the default when
+  building the HttpClient instance. Use the appropriate setters on the SolrClient instance.
+  
+* HttpSolrClient#setAllowCompression has been removed and compression must be enabled as
+  a constructor param. 
+  
+* HttpSolrClient#setDefaultMaxConnectionsPerHost and
+  HttpSolrClient#setMaxTotalConnections have been removed. These now default very
+  high and can only be changed via param when creating an HttpClient instance.
+  
+Optimizations
+----------------------
+
+* SOLR-4509: Move to non deprecated HttpClient impl classes to remove stale connection 
+  check on every request and move connection lifecycle management towards the client.
+  (Ryan Zezeski, Mark Miller, Shawn Heisey, Steve Davids)
 
 ==================  6.1.0 ==================
 
@@ -59,6 +85,14 @@ New Features
 * SOLR-8890: New static method in DistributedUpdateProcessorFactory to allow UpdateProcessorFactories
   to indicate request params that should be forwarded when DUP distributes updates. (hossman)
 
+* SOLR-8888: Add shortestPath Streaming Expression. This expression performs a breadth first
+  graph traversal to find the shortest path(s) in an unweighted, directed graph stored in a 
+  SolrCloud collection. (Joel Bernstein)
+
+* SOLR-8938: Add optional -excluderegex argument to ZkCLI. (Christine Poerschke)
+
+* SOLR-8976: Add SolrJ support for REBALANCELEADERS Collections API (Anshum Gupta)
+
 Bug Fixes
 ----------------------
 
@@ -70,17 +104,32 @@ Bug Fixes
 * SOLR-8902: Make sure ReturnFields only returns the requested fields from (fl=) evn when 
   DocumentTransformers ask for getExtraRequestFields()  (ryan)
 
+* SOLR-8875: SolrCloud Overseer clusterState could unexpectedly be null resulting in NPE.
+  (Scott Blum via David Smiley)
+
+* SOLR-8948: OverseerTaskQueue.containsTaskWithRequestId encounters json parse error if a
+  SolrResponse node is in the overseer queue. (Jessica Cheng Mallet via shalin)
+
+* SOLR-8914: ZkStateReader's refreshLiveNodes(Watcher) is not thread safe. (Scott Blum, hoss,
+  sarowe, Erick Erickson, Mark Miller, shalin)
+
+* SOLR-7729: ConcurrentUpdateSolrClient ignores the collection parameter in some methods.
+  (Nicolas Gavalda, Jorge Luis Betancourt Gonzalez via Mark Miller)
+  
 Optimizations
 ----------------------
 * SOLR-8722: Don't force a full ZkStateReader refresh on every Overseer operation.
   (Scott Blum via shalin)
-  
-* SOLR-8856: Do not cache merge or 'read once' contexts in the hdfs block cache. (Mark Miller)
 
 * SOLR-8745: Deprecate costly ZkStateReader.updateClusterState(), replace with a narrow
   forceUpdateCollection(collection) (Scott Blum via shalin)
   
 * SOLR-8856: Do not cache merge or 'read once' contexts in the hdfs block cache. (Mark Miller, Mike Drob)
+
+* SOLR-8922: Optimize filter creation (DocSetCollector) to minimize the amount of garbage
+  produced. This resulted in up to 3x throughput when small filter creation was the bottleneck,
+  as well as orders of magnitude less garbage. (Jeff Wartes, yonik)
+
 
 Other Changes
 ----------------------
@@ -100,6 +149,15 @@ Other Changes
   generate a doc list for grouped results. (Steven Bower, Keith Laban, Dennis Gove)
 
 * SOLR-8869: Optionally disable printing field cache entries in SolrFieldCacheMBean (Gregory Chanan)
+
+* SOLR-8892: Allow SolrInfoMBeans to return different statistics for /jmx vs web ui calls.
+  (Gregory Chanan, Mark Miller)
+
+* SOLR-8097: Implement builder pattern design for constructing SolrJ clients and also deprecate direct construction
+  of client objects. (Jason Gerlowski, Shawn Heisey, Anshum Gupta)
+
+* SOLR-8967: In SolrCloud mode, under the 'Core Selector' dropdown in the UI the Replication tab won't be displayed
+  anymore. The Replication tab is only beneficial to users running Solr in master-slave mode. (Varun Thacker)
 
 ==================  6.0.0 ==================
 
@@ -175,6 +233,13 @@ Upgrading from Solr 5.x
   fact that docValues do not currently preserve order, means that users should set useDocValuesAsStored="false"
   to prevent future optizations from using the column-stored values over the row-stored values when
   fields have both stored="true" and docValues="true".
+
+* Formatted date-times from Solr have some differences. If the year is more than 4 digits, there is a leading '+'.
+  When there is a non-zero number of milliseconds, it is padded with zeros to 3 digits. Negative year (BC) dates are
+  now possible.  Parsing: It is now an error to supply a portion of the date out of its, range, like 67 seconds.
+
+* SolrJ no longer includes DateUtil. If for some reason you need to format or parse dates, simply use Instant.format()
+  and Instant.parse().
 
 Detailed Change List
 ----------------------
@@ -514,6 +579,13 @@ Other Changes
 * SOLR-8810: Implement Connection.setReadOnly, Statement.set/getFetchSize, 
   ResultSet.getType (Kevin Risden)
 
+* SOLR-8904: All dates are formatted via Instant.toString() (ISO-8601); see Solr upgrade notes for differences. Will
+  now parse (and format) dates with a leading '+' or '-' (BC dates or dates > 4 digit year.
+  [value] and ms() and contrib/analytics now parse with date math. (David Smiley)
+
+* SOLR-8904: DateUtil in SolrJ moved to the extraction contrib as ExtractionDateUtil.  Obsolete methods were removed.
+  (David Smiley)
+
 ==================  5.5.1 ==================
 
 Bug Fixes
@@ -533,6 +605,9 @@ Bug Fixes
   file if the file no longer exists (for example, if a commit happened and the IndexReader
   hasn't refreshed yet). In this case the reported size of the file is -1.
   (Shai Erera, Alexey Serba, Richard Coggins)
+
+* SOLR-8870: AngularJS Query tab no longer URL-encodes the /select part of the request, fixing possible 404 issue
+  when Solr is behind a proxy. Also, now supports old-style &qt param when handler not prefixed with "/" (janhoy)
 
 ======================= 5.5.0 =======================
 

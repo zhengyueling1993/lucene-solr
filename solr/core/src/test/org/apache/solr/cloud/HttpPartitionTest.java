@@ -253,12 +253,14 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // Check that doc 3 is on the leader but not on the notLeaders
     Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1", 10000);
-    HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName);
-    assertDocExists(leaderSolr, testCollectionName, "3");
+    try (HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName)) {
+      assertDocExists(leaderSolr, testCollectionName, "3");
+    }
 
     for (Replica notLeader : notLeaders) {
-      HttpSolrClient notLeaderSolr = getHttpSolrClient(notLeader, testCollectionName);
-      assertDocNotExists(notLeaderSolr, testCollectionName, "3");
+      try (HttpSolrClient notLeaderSolr = getHttpSolrClient(notLeader, testCollectionName)) {
+        assertDocNotExists(notLeaderSolr, testCollectionName, "3");
+      }
     }
 
     // Retry sending doc 3
@@ -588,7 +590,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   protected HttpSolrClient getHttpSolrClient(Replica replica, String coll) throws Exception {
     ZkCoreNodeProps zkProps = new ZkCoreNodeProps(replica);
     String url = zkProps.getBaseUrl() + "/" + coll;
-    return new HttpSolrClient(url);
+    return getHttpSolrClient(url);
   }
 
   protected int sendDoc(int docId) throws Exception {

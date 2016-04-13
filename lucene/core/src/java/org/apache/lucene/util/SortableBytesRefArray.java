@@ -14,22 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.solr.common.util;
 
-import java.text.ParseException;
-import java.util.Locale;
+package org.apache.lucene.util;
 
-import org.apache.lucene.util.LuceneTestCase;
+import java.util.Comparator;
 
-public class TestDateUtil extends LuceneTestCase {
-
-  public void testParseDate() throws ParseException {
-    assertParsedDate(1226583351000L, "Thu Nov 13 04:35:51 AKST 2008");
-  }
-    
-  private static void assertParsedDate(long ts, String dateStr) throws ParseException {
-    long parsed = DateUtil.parseDate(dateStr).getTime();
-    assertTrue(String.format(Locale.ENGLISH, "Incorrect parsed timestamp: %d != %d (%s)", ts, parsed, dateStr), Math.abs(ts - parsed) <= 1000L);
-  }
-
+interface SortableBytesRefArray {
+  /** Append a new value */
+  int append(BytesRef bytes);
+  /** Clear all previously stored values */
+  void clear();
+  /** Returns the number of values appended so far */
+  int size();
+  /** Sort all values by the provided comparator and return an iterator over the sorted values */
+  BytesRefIterator iterator(final Comparator<BytesRef> comp);
 }

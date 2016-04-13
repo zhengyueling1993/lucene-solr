@@ -156,11 +156,10 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
   private static SolrClient createNewSolrClient(int port) {
     try {
       // setup the client...
-      HttpSolrClient client = new HttpSolrClient(buildUrl(port) + "/" + DEFAULT_TEST_CORENAME);
+      final String baseUrl = buildUrl(port) + "/" + DEFAULT_TEST_CORENAME;
+      HttpSolrClient client = getHttpSolrClient(baseUrl);
       client.setConnectionTimeout(15000);
       client.setSoTimeout(60000);
-      client.setDefaultMaxConnectionsPerHost(100);
-      client.setMaxTotalConnections(100);
       return client;
     }
     catch (Exception ex) {
@@ -277,7 +276,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
 
   private HttpSolrClient adminClient(SolrClient client) {
     String adminUrl = ((HttpSolrClient)client).getBaseURL().replace("/collection1", "");
-    return new HttpSolrClient(adminUrl);
+    return getHttpSolrClient(adminUrl);
   }
 
   @Test
