@@ -165,6 +165,10 @@ public class ZkIndexSchemaReader implements OnReconnect {
     }
   }
 
+  public String getUniqueCoreId() {
+    return uniqueCoreId;
+  }
+
   public String toString() {
     return "ZkIndexSchemaReader: "+managedSchemaPath+", uniqueCoreId: "+uniqueCoreId;
   }

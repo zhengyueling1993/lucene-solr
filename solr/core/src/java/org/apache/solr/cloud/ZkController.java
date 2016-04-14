@@ -2216,6 +2216,14 @@ public final class ZkController {
     }
   }
 
+  Set<OnReconnect> getCurrentOnReconnectListeners() {
+    HashSet<OnReconnect> clonedListeners;
+    synchronized (reconnectListeners) {
+      clonedListeners = (HashSet<OnReconnect>)reconnectListeners.clone();
+    }
+    return clonedListeners;
+  }
+
   /**
    * Persists a config file to ZooKeeper using optimistic concurrency.
    *
